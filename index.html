@@ -463,9 +463,32 @@
         
         async function loadData() {
             try {
-                // Load CSV data from the Yale site
-                const response = await fetch('https://live-palliativecare-cms-yale-edu.pantheonsite.io/billtrack_data');
-                const csvText = await response.text();
+                // Try multiple approaches to load the data
+                let csvText;
+                
+                try {
+                    // First try: Direct fetch (may work if CORS is enabled)
+                    const response = await fetch('https://live-palliativecare-cms-yale-edu.pantheonsite.io/billtrack_data');
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    csvText = await response.text();
+                } catch (directError) {
+                    console.log('Direct fetch failed, trying CORS proxy...', directError);
+                    
+                    try {
+                        // Second try: Use CORS proxy
+                        const proxyResponse = await fetch('https://corsproxy.io/?https://live-palliativecare-cms-yale-edu.pantheonsite.io/billtrack_data');
+                        if (!proxyResponse.ok) throw new Error(`Proxy HTTP ${proxyResponse.status}`);
+                        csvText = await proxyResponse.text();
+                    } catch (proxyError) {
+                        console.log('CORS proxy failed, trying alternative proxy...', proxyError);
+                        
+                        // Third try: Alternative CORS proxy
+                        const altProxyResponse = await fetch('https://api.allorigins.win/get?url=' + encodeURIComponent('https://live-palliativecare-cms-yale-edu.pantheonsite.io/billtrack_data'));
+                        if (!altProxyResponse.ok) throw new Error(`Alt proxy HTTP ${altProxyResponse.status}`);
+                        const altProxyData = await altProxyResponse.json();
+                        csvText = altProxyData.contents;
+                    }
+                }
                 
                 const parsed = Papa.parse(csvText, {
                     header: true,
@@ -488,7 +511,23 @@
             } catch (error) {
                 console.error('Error loading data:', error);
                 document.getElementById('tableContainer').innerHTML = 
-                    '<div class="error-message">Error loading data. Please check your connection and refresh the page.</div>';
+                    `<div class="error-message">
+                        <h3>Error loading data</h3>
+                        <p><strong>Issue:</strong> Unable to fetch data from Yale's server (likely due to CORS restrictions)</p>
+                        <p><strong>Solutions:</strong></p>
+                        <ul style="text-align: left; max-width: 500px; margin: 0 auto;">
+                            <li>Try refreshing the page</li>
+                            <li>Check your internet connection</li>
+                            <li>The data source may be temporarily unavailable</li>
+                            <li>CORS proxy services may be down</li>
+                        </ul>
+                        <p style="margin-top: 15px;">
+                            <strong>Data Source:</strong> 
+                            <a href="https://live-palliativecare-cms-yale-edu.pantheonsite.io/billtrack_data" target="_blank" style="color: #0066cc;">
+                                Yale Palliative Care Database
+                            </a>
+                        </p>
+                    </div>`;
             }
         }
         
