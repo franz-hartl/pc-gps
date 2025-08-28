@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Palliative Care Legislative Tracker</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f8f9fa;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #003f7f 0%, #0066cc 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            font-size: 2.2em;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .header p {
+            opacity: 0.95;
+            font-size: 1.1em;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            border-left: 4px solid #0066cc;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+        
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #003f7f;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 0.95em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .filters {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+        
+        .filter-row {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .filter-group {
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .filter-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+            font-size: 0.9em;
+        }
+        
+        select, input[type="text"] {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            transition: border-color 0.2s;
+        }
+        
+        select:focus, input[type="text"]:focus {
+            outline: none;
+            border-color: #0066cc;
+            box-shadow: 0 0 0 3px rgba(0,102,204,0.1);
+        }
+        
+        .map-container {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+        
+        .map-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        #usMap {
+            width: 100%;
+            height: 500px;
+        }
+        
+        .state-path {
+            stroke: #fff;
+            stroke-width: 0.5px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        
+        .state-path:hover {
+            opacity: 0.8;
+            stroke-width: 1.5px;
+        }
+        
+        .map-tooltip {
+            position: absolute;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            border-radius: 6px;
+            font-size: 14px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 1000;
+        }
+        
+        .map-legend {
+            display: flex;
+            justify-content: center;
+            margin-top: 15px;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            border: 1px solid #ddd;
+        }
+        
+        .chart-container {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+        
+        .chart-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .bills-table-container {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #555;
+            border-bottom: 2px solid #dee2e6;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .disposition-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+        
+        .disposition-enacted {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .disposition-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .disposition-failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .disposition-vetoed {
+            background: #e7e8ea;
+            color: #383d41;
+        }
+        
+        .bill-link {
+            color: #0066cc;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .bill-link:hover {
+            text-decoration: underline;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .error-message {
+            text-align: center;
+            padding: 40px;
+            color: #dc3545;
+            background: #f8d7da;
+            border-radius: 6px;
+            margin: 20px;
+        }
+        
+        .category-tag {
+            display: inline-block;
+            background: #e7f3ff;
+            color: #003f7f;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            margin-right: 4px;
+        }
+        
+        canvas {
+            max-height: 400px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Palliative Care Legislative Tracker</h1>
+            <p>Tracking state legislation on palliative care and serious illness policy across the United States</p>
+        </div>
+        
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="stat-number" id="totalBills">-</div>
+                <div class="stat-label">Total Bills</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="totalStates">-</div>
+                <div class="stat-label">States</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="enactedBills">-</div>
+                <div class="stat-label">Enacted</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="pendingBills">-</div>
+                <div class="stat-label">Pending</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="successRate">-</div>
+                <div class="stat-label">Success Rate</div>
+            </div>
+        </div>
+        
+        <div class="filters">
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label for="regionFilter">Region</label>
+                    <select id="regionFilter">
+                        <option value="">All Regions</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="stateFilter">State</label>
+                    <select id="stateFilter">
+                        <option value="">All States</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="dispositionFilter">Disposition</label>
+                    <select id="dispositionFilter">
+                        <option value="">All Dispositions</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="categoryFilter">Category</label>
+                    <select id="categoryFilter">
+                        <option value="">All Categories</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="searchFilter">Search</label>
+                    <input type="text" id="searchFilter" placeholder="Search bill titles...">
+                </div>
+            </div>
+        </div>
+        
+        <div class="map-container">
+            <h3 class="map-title">Legislative Activity by State</h3>
+            <div id="usMap"></div>
+            <div class="map-legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #e8f4ff;"></div>
+                    <span>0 bills</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #b3d9ff;"></div>
+                    <span>1-5 bills</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #66b3ff;"></div>
+                    <span>6-20 bills</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #0066cc;"></div>
+                    <span>21-50 bills</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #003f7f;"></div>
+                    <span>50+ bills</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chart-grid">
+            <div class="chart-container">
+                <h3 class="chart-title">Bills by Region</h3>
+                <canvas id="regionChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3 class="chart-title">Legislative Outcomes</h3>
+                <canvas id="dispositionChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <h3 class="chart-title">Top 10 States by Legislative Activity</h3>
+            <canvas id="stateChart"></canvas>
+        </div>
+        
+        <div class="chart-container">
+            <h3 class="chart-title">Bills by Category (Top Categories)</h3>
+            <canvas id="categoryChart"></canvas>
+        </div>
+        
+        <div class="bills-table-container">
+            <h3 class="chart-title">Legislative Bills Detail</h3>
+            <div id="tableContainer">
+                <div class="loading">Loading data...</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="map-tooltip" id="mapTooltip"></div>
+    
+    <script>
+        let allData = [];
+        let filteredData = [];
+        let charts = {};
+        let usMapData = null;
+        
+        // State name to abbreviation mapping
+        const stateNameToAbbr = {
+            'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR', 'California': 'CA',
+            'Colorado': 'CO', 'Connecticut': 'CT', 'Delaware': 'DE', 'Florida': 'FL', 'Georgia': 'GA',
+            'Hawaii': 'HI', 'Idaho': 'ID', 'Illinois': 'IL', 'Indiana': 'IN', 'Iowa': 'IA',
+            'Kansas': 'KS', 'Kentucky': 'KY', 'Louisiana': 'LA', 'Maine': 'ME', 'Maryland': 'MD',
+            'Massachusetts': 'MA', 'Michigan': 'MI', 'Minnesota': 'MN', 'Mississippi': 'MS', 'Missouri': 'MO',
+            'Montana': 'MT', 'Nebraska': 'NE', 'Nevada': 'NV', 'New Hampshire': 'NH', 'New Jersey': 'NJ',
+            'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC', 'North Dakota': 'ND', 'Ohio': 'OH',
+            'Oklahoma': 'OK', 'Oregon': 'OR', 'Pennsylvania': 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC',
+            'South Dakota': 'SD', 'Tennessee': 'TN', 'Texas': 'TX', 'Utah': 'UT', 'Vermont': 'VT',
+            'Virginia': 'VA', 'Washington': 'WA', 'West Virginia': 'WV', 'Wisconsin': 'WI', 'Wyoming': 'WY',
+            'District of Columbia': 'DC', 'Puerto Rico': 'PR'
+        };
+        
+        async function loadData() {
+            try {
+                // Load CSV data from the Yale site
+                const response = await fetch('https://live-palliativecare-cms-yale-edu.pantheonsite.io/billtrack_data');
+                const csvText = await response.text();
+                
+                const parsed = Papa.parse(csvText, {
+                    header: true,
+                    dynamicTyping: true,
+                    skipEmptyLines: true
+                });
+                
+                allData = parsed.data;
+                filteredData = [...allData];
+                
+                // Load US map data
+                const mapResponse = await fetch('https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json');
+                usMapData = await mapResponse.json();
+                
+                initializeFilters();
+                updateStats();
+                createMap();
+                createCharts();
+                updateTable();
+            } catch (error) {
+                console.error('Error loading data:', error);
+                document.getElementById('tableContainer').innerHTML = 
+                    '<div class="error-message">Error loading data. Please check your connection and refresh the page.</div>';
+            }
+        }
+        
+        function initializeFilters() {
+            // Populate region filter
+            const regions = [...new Set(allData.map(d => d.Region))].filter(Boolean).sort();
+            const regionSelect = document.getElementById('regionFilter');
+            regions.forEach(region => {
+                const option = document.createElement('option');
+                option.value = region;
+                option.textContent = region;
+                regionSelect.appendChild(option);
+            });
+            
+            // Populate state filter
+            const states = [...new Set(allData.map(d => d.StateTerrOrgAbbrev))].filter(Boolean).sort();
+            const stateSelect = document.getElementById('stateFilter');
+            states.forEach(state => {
+                const option = document.createElement('option');
+                option.value = state;
+                option.textContent = state;
+                stateSelect.appendChild(option);
+            });
+            
+            // Populate disposition filter
+            const dispositions = [...new Set(allData.map(d => d.CurrentDisposition))].filter(Boolean).sort();
+            const dispositionSelect = document.getElementById('dispositionFilter');
+            dispositions.forEach(disp => {
+                const option = document.createElement('option');
+                option.value = disp;
+                option.textContent = disp;
+                dispositionSelect.appendChild(option);
+            });
+            
+            // Populate category filter
+            const categories = new Set();
+            allData.forEach(row => {
+                if (row.CategoryNames) {
+                    row.CategoryNames.split(',').forEach(cat => categories.add(cat.trim()));
+                }
+            });
+            const categorySelect = document.getElementById('categoryFilter');
+            [...categories].sort().forEach(cat => {
+                const option = document.createElement('option');
+                option.value = cat;
+                option.textContent = cat;
+                categorySelect.appendChild(option);
+            });
+            
+            // Add event listeners
+            document.getElementById('regionFilter').addEventListener('change', applyFilters);
+            document.getElementById('stateFilter').addEventListener('change', applyFilters);
+            document.getElementById('dispositionFilter').addEventListener('change', applyFilters);
+            document.getElementById('categoryFilter').addEventListener('change', applyFilters);
+            document.getElementById('searchFilter').addEventListener('input', applyFilters);
+        }
+        
+        function applyFilters() {
+            const region = document.getElementById('regionFilter').value;
+            const state = document.getElementById('stateFilter').value;
+            const disposition = document.getElementById('dispositionFilter').value;
+            const category = document.getElementById('categoryFilter').value;
+            const search = document.getElementById('searchFilter').value.toLowerCase();
+            
+            filteredData = allData.filter(row => {
+                if (region && row.Region !== region) return false;
+                if (state && row.StateTerrOrgAbbrev !== state) return false;
+                if (disposition && row.CurrentDisposition !== disposition) return false;
+                if (category && (!row.CategoryNames || !row.CategoryNames.includes(category))) return false;
+                if (search && !row.Title.toLowerCase().includes(search)) return false;
+                return true;
+            });
+            
+            updateStats();
+            updateMap();
+            updateCharts();
+            updateTable();
+        }
+        
+        function updateStats() {
+            const totalBills = filteredData.length;
+            const totalStates = new Set(filteredData.map(d => d.StateTerrOrgAbbrev)).size;
+            const enacted = filteredData.filter(d => d.CurrentDisposition === 'Enacted').length;
+            const pending = filteredData.filter(d => d.CurrentDisposition === 'Pending').length;
+            const successRate = totalBills > 0 ? Math.round((enacted / totalBills) * 100) : 0;
+            
+            document.getElementById('totalBills').textContent = totalBills.toLocaleString();
+            document.getElementById('totalStates').textContent = totalStates;
+            document.getElementById('enactedBills').textContent = enacted;
+            document.getElementById('pendingBills').textContent = pending;
+            document.getElementById('successRate').textContent = successRate + '%';
+        }
+        
+        function createMap() {
+            if (!usMapData) return;
+            
+            const width = document.getElementById('usMap').clientWidth;
+            const height = 500;
+            
+            const svg = d3.select('#usMap')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
+            
+            const projection = d3.geoAlbersUsa()
+                .scale(width)
+                .translate([width / 2, height / 2]);
+            
+            const path = d3.geoPath().projection(projection);
+            
+            const states = topojson.feature(usMapData, usMapData.objects.states);
+            
+            // Create initial map
+            svg.append('g')
+                .attr('class', 'states')
+                .selectAll('path')
+                .data(states.features)
+                .enter().append('path')
+                .attr('class', 'state-path')
+                .attr('d', path)
+                .attr('data-state', d => d.properties.name)
+                .style('fill', '#e8f4ff')
+                .on('mouseover', function(event, d) {
+                    const stateName = d.properties.name;
+                    const stateAbbr = stateNameToAbbr[stateName];
+                    const stateBills = filteredData.filter(bill => bill.StateTerrOrgAbbrev === stateAbbr);
+                    
+                    const tooltip = document.getElementById('mapTooltip');
+                    tooltip.innerHTML = `
+                        <strong>${stateName} (${stateAbbr || 'N/A'})</strong><br>
+                        Total Bills: ${stateBills.length}<br>
+                        Enacted: ${stateBills.filter(b => b.CurrentDisposition === 'Enacted').length}<br>
+                        Pending: ${stateBills.filter(b => b.CurrentDisposition === 'Pending').length}
+                    `;
+                    tooltip.style.opacity = '1';
+                    tooltip.style.left = (event.pageX + 10) + 'px';
+                    tooltip.style.top = (event.pageY - 10) + 'px';
+                })
+                .on('mouseout', function() {
+                    document.getElementById('mapTooltip').style.opacity = '0';
+                })
+                .on('click', function(event, d) {
+                    const stateName = d.properties.name;
+                    const stateAbbr = stateNameToAbbr[stateName];
+                    if (stateAbbr) {
+                        document.getElementById('stateFilter').value = stateAbbr;
+                        applyFilters();
+                    }
+                });
+            
+            updateMap();
+        }
+        
+        function updateMap() {
+            if (!usMapData) return;
+            
+            // Count bills by state
+            const stateCounts = {};
+            filteredData.forEach(row => {
+                if (row.StateTerrOrgAbbrev) {
+                    stateCounts[row.StateTerrOrgAbbrev] = (stateCounts[row.StateTerrOrgAbbrev] || 0) + 1;
+                }
+            });
+            
+            // Color scale
+            const getColor = (count) => {
+                if (count === 0) return '#e8f4ff';
+                if (count <= 5) return '#b3d9ff';
+                if (count <= 20) return '#66b3ff';
+                if (count <= 50) return '#0066cc';
+                return '#003f7f';
+            };
+            
+            // Update state colors
+            d3.selectAll('.state-path')
+                .style('fill', d => {
+                    const stateName = d.properties.name;
+                    const stateAbbr = stateNameToAbbr[stateName];
+                    const count = stateCounts[stateAbbr] || 0;
+                    return getColor(count);
+                });
+        }
+        
+        function createCharts() {
+            // Region Chart
+            const regionCounts = {};
+            filteredData.forEach(row => {
+                if (row.Region) {
+                    regionCounts[row.Region] = (regionCounts[row.Region] || 0) + 1;
+                }
+            });
+            
+            const regionCtx = document.getElementById('regionChart').getContext('2d');
+            charts.region = new Chart(regionCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(regionCounts),
+                    datasets: [{
+                        label: 'Number of Bills',
+                        data: Object.values(regionCounts),
+                        backgroundColor: 'rgba(0, 102, 204, 0.8)',
+                        borderColor: 'rgba(0, 102, 204, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { precision: 0 }
+                        }
+                    }
+                }
+            });
+            
+            // Disposition Chart
+            const dispositionCounts = {};
+            filteredData.forEach(row => {
+                if (row.CurrentDisposition) {
+                    dispositionCounts[row.CurrentDisposition] = (dispositionCounts[row.CurrentDisposition] || 0) + 1;
+                }
+            });
+            
+            const dispositionCtx = document.getElementById('dispositionChart').getContext('2d');
+            charts.disposition = new Chart(dispositionCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(dispositionCounts),
+                    datasets: [{
+                        data: Object.values(dispositionCounts),
+                        backgroundColor: [
+                            'rgba(40, 167, 69, 0.8)',
+                            'rgba(255, 193, 7, 0.8)',
+                            'rgba(220, 53, 69, 0.8)',
+                            'rgba(108, 117, 125, 0.8)'
+                        ],
+                        borderColor: [
+                            'rgba(40, 167, 69, 1)',
+                            'rgba(255, 193, 7, 1)',
+                            'rgba(220, 53, 69, 1)',
+                            'rgba(108, 117, 125, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right'
+                        }
+                    }
+                }
+            });
+            
+            // State Chart (Top 10)
+            const stateCounts = {};
+            filteredData.forEach(row => {
+                if (row.StateTerrOrgAbbrev) {
+                    stateCounts[row.StateTerrOrgAbbrev] = (stateCounts[row.StateTerrOrgAbbrev] || 0) + 1;
+                }
+            });
+            
+            const sortedStates = Object.entries(stateCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10);
+            
+            const stateCtx = document.getElementById('stateChart').getContext('2d');
+            charts.state = new Chart(stateCtx, {
+                type: 'bar',
+                data: {
+                    labels: sortedStates.map(s => s[0]),
+                    datasets: [{
+                        label: 'Number of Bills',
+                        data: sortedStates.map(s => s[1]),
+                        backgroundColor: 'rgba(0, 63, 127, 0.8)',
+                        borderColor: 'rgba(0, 63, 127, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            ticks: { precision: 0 }
+                        }
+                    }
+                }
+            });
+            
+            // Category Chart
+            const categoryCounts = {};
+            filteredData.forEach(row => {
+                if (row.CategoryNames) {
+                    row.CategoryNames.split(',').forEach(cat => {
+                        const trimmed = cat.trim();
+                        categoryCounts[trimmed] = (categoryCounts[trimmed] || 0) + 1;
+                    });
+                }
+            });
+            
+            const sortedCategories = Object.entries(categoryCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 8);
+            
+            const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+            charts.category = new Chart(categoryCtx, {
+                type: 'bar',
+                data: {
+                    labels: sortedCategories.map(c => c[0]),
+                    datasets: [{
+                        label: 'Number of Bills',
+                        data: sortedCategories.map(c => c[1]),
+                        backgroundColor: 'rgba(0, 102, 204, 0.8)',
+                        borderColor: 'rgba(0, 102, 204, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { precision: 0 }
+                        },
+                        x: {
+                            ticks: {
+                                callback: function(value, index, values) {
+                                    const label = this.getLabelForValue(value);
+                                    if (label.length > 20) {
+                                        return label.substr(0, 20) + '...';
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function updateCharts() {
+            // Update Region Chart
+            const regionCounts = {};
+            filteredData.forEach(row => {
+                if (row.Region) {
+                    regionCounts[row.Region] = (regionCounts[row.Region] || 0) + 1;
+                }
+            });
+            
+            charts.region.data.labels = Object.keys(regionCounts);
+            charts.region.data.datasets[0].data = Object.values(regionCounts);
+            charts.region.update();
+            
+            // Update Disposition Chart
+            const dispositionCounts = {};
+            filteredData.forEach(row => {
+                if (row.CurrentDisposition) {
+                    dispositionCounts[row.CurrentDisposition] = (dispositionCounts[row.CurrentDisposition] || 0) + 1;
+                }
+            });
+            
+            charts.disposition.data.labels = Object.keys(dispositionCounts);
+            charts.disposition.data.datasets[0].data = Object.values(dispositionCounts);
+            charts.disposition.update();
+            
+            // Update State Chart
+            const stateCounts = {};
+            filteredData.forEach(row => {
+                if (row.StateTerrOrgAbbrev) {
+                    stateCounts[row.StateTerrOrgAbbrev] = (stateCounts[row.StateTerrOrgAbbrev] || 0) + 1;
+                }
+            });
+            
+            const sortedStates = Object.entries(stateCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10);
+            
+            charts.state.data.labels = sortedStates.map(s => s[0]);
+            charts.state.data.datasets[0].data = sortedStates.map(s => s[1]);
+            charts.state.update();
+            
+            // Update Category Chart
+            const categoryCounts = {};
+            filteredData.forEach(row => {
+                if (row.CategoryNames) {
+                    row.CategoryNames.split(',').forEach(cat => {
+                        const trimmed = cat.trim();
+                        categoryCounts[trimmed] = (categoryCounts[trimmed] || 0) + 1;
+                    });
+                }
+            });
+            
+            const sortedCategories = Object.entries(categoryCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 8);
+            
+            charts.category.data.labels = sortedCategories.map(c => c[0]);
+            charts.category.data.datasets[0].data = sortedCategories.map(c => c[1]);
+            charts.category.update();
+        }
+        
+        function updateTable() {
+            const tableData = filteredData.slice(0, 100); // Show first 100 rows for performance
+            
+            if (tableData.length === 0) {
+                document.getElementById('tableContainer').innerHTML = '<p>No bills match the selected filters.</p>';
+                return;
+            }
+            
+            let tableHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>State</th>
+                            <th>Bill Number</th>
+                            <th>Title</th>
+                            <th>Categories</th>
+                            <th>Disposition</th>
+                            <th>Intro Date</th>
+                            <th>Last Action</th>
+                            <th>Link</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            tableData.forEach(row => {
+                const dispositionClass = `disposition-${row.CurrentDisposition ? row.CurrentDisposition.toLowerCase() : 'unknown'}`;
+                const categories = row.CategoryNames ? 
+                    row.CategoryNames.split(',').map(cat => 
+                        `<span class="category-tag">${cat.trim()}</span>`
+                    ).join(' ') : '-';
+                
+                tableHTML += `
+                    <tr>
+                        <td>${row.StateTerrOrgAbbrev || '-'}</td>
+                        <td><strong>${row.Number || '-'}</strong></td>
+                        <td>${row.Title || '-'}</td>
+                        <td>${categories}</td>
+                        <td><span class="disposition-badge ${dispositionClass}">${row.CurrentDisposition || '-'}</span></td>
+                        <td>${row.IntroDate || '-'}</td>
+                        <td>${row.LastStatusActionDate || '-'}</td>
+                        <td>${row.PublicTextLink ? `<a href="${row.PublicTextLink}" target="_blank" class="bill-link">View</a>` : '-'}</td>
+                    </tr>
+                `;
+            });
+            
+            tableHTML += `
+                    </tbody>
+                </table>
+            `;
+            
+            if (filteredData.length > 100) {
+                tableHTML += `<p style="margin-top: 15px; color: #666; font-style: italic;">Showing first 100 of ${filteredData.length} bills. Use filters to narrow results.</p>`;
+            }
+            
+            document.getElementById('tableContainer').innerHTML = tableHTML;
+        }
+        
+        // Initialize on page load
+        loadData();
+    </script>
+</body>
+</html>
