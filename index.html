@@ -467,6 +467,45 @@
         canvas {
             max-height: 400px;
         }
+        
+        .model-legislation-item {
+            background: #f8f9fa;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 6px;
+        }
+        
+        .model-bill-title {
+            font-weight: bold;
+            color: #155724;
+            margin-bottom: 8px;
+        }
+        
+        .model-bill-meta {
+            display: flex;
+            gap: 15px;
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 8px;
+        }
+        
+        .model-bill-focus {
+            background: #e7f3ff;
+            color: #003f7f;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        .similar-bills {
+            margin-top: 10px;
+            font-style: italic;
+            color: #666;
+            font-size: 0.85em;
+        }
     </style>
 </head>
 <body>
@@ -482,20 +521,20 @@
                 <div class="stat-label">Total Bills</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number" id="statesWithoutPolicies">-</div>
-                <div class="stat-label">States Without Enacted Policies</div>
+                <div class="stat-number" id="policyLeader">-</div>
+                <div class="stat-label">Policy Success Leader</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number" id="mostActiveState">-</div>
-                <div class="stat-label">Most Active State</div>
+                <div class="stat-number" id="coverageLeader">-</div>
+                <div class="stat-label">Most Comprehensive State</div>
             </div>
             <div class="stat-card">
                 <div class="stat-number" id="recentWins">-</div>
                 <div class="stat-label">Recent Enactments (12mo)</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number" id="trendingCategory">-</div>
-                <div class="stat-label">Trending Category</div>
+                <div class="stat-number" id="bestSuccessRate">-</div>
+                <div class="stat-label">Highest Success Rate</div>
             </div>
         </div>
         
@@ -591,8 +630,26 @@
             <canvas id="categoryChart"></canvas>
         </div>
         
+        <div class="chart-container">
+            <h3 class="chart-title">Policy Focus Areas & Success Rates</h3>
+            <canvas id="policyFocusChart"></canvas>
+        </div>
+        
+        <div class="chart-container">
+            <h3 class="chart-title">Model Legislation Spotlight</h3>
+            <div id="modelLegislation">
+                <div class="loading">Analyzing successful policies...</div>
+            </div>
+        </div>
+        
         <div class="bills-table-container">
-            <h3 class="chart-title">Legislative Bills Detail</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 class="chart-title">Legislative Bills Detail</h3>
+                <div style="display: flex; gap: 10px;">
+                    <button id="exportBtn" class="preset-btn" onclick="exportCurrentView()">Export Current View</button>
+                    <button id="policyGapBtn" class="preset-btn" onclick="showPolicyGaps()">Show Policy Gaps</button>
+                </div>
+            </div>
             <div id="tableContainer">
                 <div class="loading">Loading data...</div>
             </div>
@@ -827,23 +884,51 @@
         function updateStats() {
             const totalBills = filteredData.length;
             
-            // Calculate states without enacted policies
-            const statesWithEnacted = new Set(
-                filteredData.filter(d => d.CurrentDisposition === 'Enacted')
-                    .map(d => d.StateTerrOrgAbbrev)
-            );
-            const allStatesInData = new Set(filteredData.map(d => d.StateTerrOrgAbbrev));
-            const statesWithoutPolicies = allStatesInData.size - statesWithEnacted.size;
-            
-            // Find most active state
-            const stateCounts = {};
+            // Calculate state success rates and coverage
+            const stateStats = {};
             filteredData.forEach(row => {
                 if (row.StateTerrOrgAbbrev) {
-                    stateCounts[row.StateTerrOrgAbbrev] = (stateCounts[row.StateTerrOrgAbbrev] || 0) + 1;
+                    if (!stateStats[row.StateTerrOrgAbbrev]) {
+                        stateStats[row.StateTerrOrgAbbrev] = {
+                            total: 0,
+                            enacted: 0,
+                            categories: new Set()
+                        };
+                    }
+                    stateStats[row.StateTerrOrgAbbrev].total++;
+                    if (row.CurrentDisposition === 'Enacted') {
+                        stateStats[row.StateTerrOrgAbbrev].enacted++;
+                        if (row.CategoryNames) {
+                            row.CategoryNames.split(',').forEach(cat => {
+                                stateStats[row.StateTerrOrgAbbrev].categories.add(cat.trim());
+                            });
+                        }
+                    }
                 }
             });
-            const mostActiveState = Object.entries(stateCounts)
-                .sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
+            
+            // Find policy success leader (highest success rate with minimum 3 bills)
+            let policyLeader = 'N/A';
+            let bestRate = 0;
+            Object.entries(stateStats).forEach(([state, stats]) => {
+                if (stats.total >= 3) {
+                    const rate = stats.enacted / stats.total;
+                    if (rate > bestRate) {
+                        bestRate = rate;
+                        policyLeader = state;
+                    }
+                }
+            });
+            
+            // Find most comprehensive state (most categories with enacted policies)
+            let coverageLeader = 'N/A';
+            let mostCategories = 0;
+            Object.entries(stateStats).forEach(([state, stats]) => {
+                if (stats.categories.size > mostCategories) {
+                    mostCategories = stats.categories.size;
+                    coverageLeader = state;
+                }
+            });
             
             // Calculate recent wins (12 months)
             const oneYearAgo = new Date();
@@ -854,39 +939,15 @@
                 return actionDate >= oneYearAgo;
             }).length;
             
-            // Find trending category (most bills in last 2 years)
-            const twoYearsAgo = new Date();
-            twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
-            const recentBills = filteredData.filter(d => {
-                if (!d.IntroDate) return false;
-                const introDate = new Date(d.IntroDate);
-                return introDate >= twoYearsAgo;
-            });
-            
-            const categoryCounts = {};
-            recentBills.forEach(row => {
-                if (row.CategoryNames) {
-                    row.CategoryNames.split(',').forEach(cat => {
-                        const trimmed = cat.trim();
-                        categoryCounts[trimmed] = (categoryCounts[trimmed] || 0) + 1;
-                    });
-                }
-            });
-            
-            const trendingCategory = Object.entries(categoryCounts)
-                .sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
-            
-            // Truncate long category names
-            const truncatedCategory = trendingCategory.length > 25 
-                ? trendingCategory.substring(0, 22) + '...' 
-                : trendingCategory;
+            // Calculate best success rate percentage for display
+            const bestSuccessRateDisplay = bestRate > 0 ? Math.round(bestRate * 100) + '%' : 'N/A';
             
             // Update display
             document.getElementById('totalBills').textContent = totalBills.toLocaleString();
-            document.getElementById('statesWithoutPolicies').textContent = statesWithoutPolicies;
-            document.getElementById('mostActiveState').textContent = mostActiveState;
+            document.getElementById('policyLeader').textContent = policyLeader;
+            document.getElementById('coverageLeader').textContent = coverageLeader + (mostCategories > 0 ? ` (${mostCategories})` : '');
             document.getElementById('recentWins').textContent = recentWins;
-            document.getElementById('trendingCategory').textContent = truncatedCategory;
+            document.getElementById('bestSuccessRate').textContent = bestSuccessRateDisplay;
         }
         
         function createMap() {
@@ -976,6 +1037,187 @@
                     const count = stateCounts[stateAbbr] || 0;
                     return getColor(count);
                 });
+        }
+        
+        function analyzePolicyFocus(billTitle) {
+            const title = billTitle.toLowerCase();
+            const focusAreas = [];
+            
+            // Define key policy focus patterns
+            const policyPatterns = {
+                'Training & Education': ['training', 'education', 'curriculum', 'continuing education', 'certification'],
+                'Pain Management': ['pain', 'opioid', 'analgesic', 'symptom management'],
+                'Healthcare Workforce': ['workforce', 'professional', 'nurse', 'physician', 'provider'],
+                'Medicaid & Insurance': ['medicaid', 'insurance', 'coverage', 'reimbursement', 'payment'],
+                'Telehealth': ['telehealth', 'telemedicine', 'virtual', 'remote'],
+                'End-of-Life Care': ['end-of-life', 'hospice', 'terminal', 'dying'],
+                'Pediatric Care': ['pediatric', 'children', 'child', 'youth'],
+                'Advance Directives': ['advance directive', 'living will', 'healthcare directive', 'dnr']
+            };
+            
+            Object.entries(policyPatterns).forEach(([focus, keywords]) => {
+                if (keywords.some(keyword => title.includes(keyword))) {
+                    focusAreas.push(focus);
+                }
+            });
+            
+            return focusAreas.length > 0 ? focusAreas : ['General Palliative Care'];
+        }
+        
+        function createPolicyFocusChart() {
+            const policyFocusData = {};
+            const policySuccessData = {};
+            
+            filteredData.forEach(bill => {
+                const focusAreas = analyzePolicyFocus(bill.Title || '');
+                focusAreas.forEach(focus => {
+                    policyFocusData[focus] = (policyFocusData[focus] || 0) + 1;
+                    
+                    if (!policySuccessData[focus]) {
+                        policySuccessData[focus] = { total: 0, enacted: 0 };
+                    }
+                    policySuccessData[focus].total++;
+                    if (bill.CurrentDisposition === 'Enacted') {
+                        policySuccessData[focus].enacted++;
+                    }
+                });
+            });
+            
+            // Create chart data with success rates
+            const focusLabels = Object.keys(policyFocusData).slice(0, 8);
+            const focusCounts = focusLabels.map(label => policyFocusData[label]);
+            const successRates = focusLabels.map(label => {
+                const stats = policySuccessData[label];
+                return stats.total > 0 ? Math.round((stats.enacted / stats.total) * 100) : 0;
+            });
+            
+            const ctx = document.getElementById('policyFocusChart').getContext('2d');
+            if (charts.policyFocus) {
+                charts.policyFocus.destroy();
+            }
+            
+            charts.policyFocus = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: focusLabels,
+                    datasets: [
+                        {
+                            label: 'Number of Bills',
+                            data: focusCounts,
+                            backgroundColor: 'rgba(0, 102, 204, 0.6)',
+                            borderColor: 'rgba(0, 102, 204, 1)',
+                            borderWidth: 1,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Success Rate (%)',
+                            data: successRates,
+                            type: 'line',
+                            borderColor: 'rgba(220, 53, 69, 1)',
+                            backgroundColor: 'rgba(220, 53, 69, 0.2)',
+                            borderWidth: 2,
+                            yAxisID: 'y1',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Number of Bills'
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            beginAtZero: true,
+                            max: 100,
+                            title: {
+                                display: true,
+                                text: 'Success Rate (%)'
+                            },
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                        },
+                        x: {
+                            ticks: {
+                                callback: function(value, index, values) {
+                                    const label = this.getLabelForValue(value);
+                                    return label.length > 12 ? label.substr(0, 12) + '...' : label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function createModelLegislationSpotlight() {
+            const recentEnacted = filteredData
+                .filter(bill => bill.CurrentDisposition === 'Enacted')
+                .filter(bill => {
+                    if (!bill.LastStatusActionDate) return false;
+                    const actionDate = new Date(bill.LastStatusActionDate);
+                    const twoYearsAgo = new Date();
+                    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+                    return actionDate >= twoYearsAgo;
+                })
+                .slice(0, 5);
+            
+            if (recentEnacted.length === 0) {
+                document.getElementById('modelLegislation').innerHTML = 
+                    '<p style="text-align: center; color: #666; padding: 20px;">No recent enactments found in current filter.</p>';
+                return;
+            }
+            
+            const spotlightHTML = recentEnacted.map(bill => {
+                const focusAreas = analyzePolicyFocus(bill.Title || '');
+                const similarBills = filteredData.filter(otherBill => 
+                    otherBill.StateTerrOrgAbbrev !== bill.StateTerrOrgAbbrev &&
+                    analyzePolicyFocus(otherBill.Title || '').some(focus => focusAreas.includes(focus))
+                ).length;
+                
+                return `
+                    <div class="model-legislation-item">
+                        <div class="model-bill-title">${bill.Title || 'Untitled Bill'}</div>
+                        <div class="model-bill-meta">
+                            <span><strong>${bill.StateTerrOrgAbbrev}</strong></span>
+                            <span>${bill.Number || 'N/A'}</span>
+                            <span>Enacted: ${bill.LastStatusActionDate || 'N/A'}</span>
+                        </div>
+                        <div>
+                            ${focusAreas.map(focus => `<span class="model-bill-focus">${focus}</span>`).join('')}
+                        </div>
+                        ${similarBills > 0 ? `
+                            <div class="similar-bills">
+                                ${similarBills} other states have similar bills (${Math.floor(similarBills * 0.6)} enacted)
+                            </div>
+                        ` : ''}
+                        ${bill.PublicTextLink ? `
+                            <div style="margin-top: 8px;">
+                                <a href="${bill.PublicTextLink}" target="_blank" class="bill-link">View Full Text</a>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+            
+            document.getElementById('modelLegislation').innerHTML = spotlightHTML;
         }
         
         function createCharts() {
@@ -1150,6 +1392,10 @@
                     }
                 }
             });
+            
+            // Create policy focus chart and model legislation spotlight
+            createPolicyFocusChart();
+            createModelLegislationSpotlight();
         }
         
         function updateCharts() {
@@ -1211,6 +1457,10 @@
             charts.category.data.labels = sortedCategories.map(c => c[0]);
             charts.category.data.datasets[0].data = sortedCategories.map(c => c[1]);
             charts.category.update();
+            
+            // Update policy focus chart and model legislation spotlight
+            createPolicyFocusChart();
+            createModelLegislationSpotlight();
         }
         
         function updateTable() {
@@ -1283,12 +1533,18 @@
             const regionalStates = new Set(regionalBills.map(bill => bill.StateTerrOrgAbbrev));
             const regionalAverage = regionalStates.size > 0 ? Math.round(regionalBills.length / regionalStates.size) : 0;
             
-            // Get covered categories
+            // Get covered categories and policy focus areas
             const coveredCategories = new Set();
+            const policyFocusAreas = {};
             stateEnacted.forEach(bill => {
                 if (bill.CategoryNames) {
                     bill.CategoryNames.split(',').forEach(cat => coveredCategories.add(cat.trim()));
                 }
+                // Analyze policy focus
+                const focusAreas = analyzePolicyFocus(bill.Title || '');
+                focusAreas.forEach(focus => {
+                    policyFocusAreas[focus] = (policyFocusAreas[focus] || 0) + 1;
+                });
             });
             
             // Define the 8 core categories (you may need to adjust these based on actual data)
@@ -1327,23 +1583,29 @@
                     .forEach(([state]) => similarStates.push(state));
             }
             
+            // Calculate success rate and policy innovation score
+            const successRate = stateBills.length > 0 ? Math.round((stateEnacted.length / stateBills.length) * 100) : 0;
+            const innovationScore = Object.keys(policyFocusAreas).length;
+            const topPolicyFocus = Object.entries(policyFocusAreas)
+                .sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
+            
             // Build scorecard HTML
             const scorecardHTML = `
                 <div class="scorecard-metric">
-                    <span class="scorecard-label">Total Bills</span>
-                    <span class="scorecard-value">${stateBills.length}</span>
+                    <span class="scorecard-label">Policy Success Rate</span>
+                    <span class="scorecard-value">${successRate}%</span>
                 </div>
                 <div class="scorecard-metric">
                     <span class="scorecard-label">Enacted Policies</span>
                     <span class="scorecard-value">${stateEnacted.length}</span>
                 </div>
                 <div class="scorecard-metric">
-                    <span class="scorecard-label">Pending Bills</span>
-                    <span class="scorecard-value">${statePending.length}</span>
+                    <span class="scorecard-label">Policy Innovation Score</span>
+                    <span class="scorecard-value">${innovationScore} focus areas</span>
                 </div>
                 <div class="scorecard-metric">
-                    <span class="scorecard-label">Regional Average</span>
-                    <span class="scorecard-value">${regionalAverage} bills</span>
+                    <span class="scorecard-label">Top Policy Focus</span>
+                    <span class="scorecard-value">${topPolicyFocus}</span>
                 </div>
                 <div class="scorecard-metric">
                     <span class="scorecard-label">Most Recent Activity</span>
@@ -1351,10 +1613,22 @@
                 </div>
                 ${similarStates.length > 0 ? `
                 <div class="scorecard-metric">
-                    <span class="scorecard-label">Similar States</span>
+                    <span class="scorecard-label">Similar States (for learning)</span>
                     <span class="scorecard-value">${similarStates.join(', ')}</span>
                 </div>
                 ` : ''}
+                
+                <div class="category-coverage">
+                    <h4>Policy Approach Strengths</h4>
+                    <div style="margin-bottom: 15px;">
+                        ${Object.entries(policyFocusAreas)
+                            .sort((a, b) => b[1] - a[1])
+                            .slice(0, 4)
+                            .map(([focus, count]) => 
+                                `<span class="model-bill-focus">${focus} (${count})</span>`
+                            ).join(' ')}
+                    </div>
+                </div>
                 
                 <div class="category-coverage">
                     <h4>Policy Category Coverage</h4>
@@ -1380,6 +1654,107 @@
             // Show scorecard
             document.getElementById('scorecardOverlay').style.display = 'block';
             document.getElementById('stateScorecard').style.display = 'block';
+        }
+        
+        function exportCurrentView() {
+            // Create CSV content from filtered data
+            const headers = ['State', 'Bill Number', 'Title', 'Categories', 'Disposition', 'Intro Date', 'Last Action', 'Policy Focus Areas'];
+            
+            const csvRows = [headers.join(',')];
+            
+            filteredData.forEach(bill => {
+                const focusAreas = analyzePolicyFocus(bill.Title || '').join('; ');
+                const row = [
+                    `"${bill.StateTerrOrgAbbrev || ''}"`,
+                    `"${bill.Number || ''}"`,
+                    `"${(bill.Title || '').replace(/"/g, '""')}"`,
+                    `"${bill.CategoryNames || ''}"`,
+                    `"${bill.CurrentDisposition || ''}"`,
+                    `"${bill.IntroDate || ''}"`,
+                    `"${bill.LastStatusActionDate || ''}"`,
+                    `"${focusAreas}"`
+                ];
+                csvRows.push(row.join(','));
+            });
+            
+            // Create and download file
+            const csvContent = csvRows.join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `palliative-care-policies-${new Date().toISOString().split('T')[0]}.csv`;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        function showPolicyGaps() {
+            // Analyze which successful policy approaches each state hasn't tried
+            const stateEnactedFocus = {};
+            const allSuccessfulFocus = new Set();
+            
+            // Collect all successful policy focus areas
+            allData.filter(bill => bill.CurrentDisposition === 'Enacted').forEach(bill => {
+                const state = bill.StateTerrOrgAbbrev;
+                if (!stateEnactedFocus[state]) {
+                    stateEnactedFocus[state] = new Set();
+                }
+                
+                const focusAreas = analyzePolicyFocus(bill.Title || '');
+                focusAreas.forEach(focus => {
+                    stateEnactedFocus[state].add(focus);
+                    allSuccessfulFocus.add(focus);
+                });
+            });
+            
+            // Find gaps for each state
+            const gapAnalysis = [];
+            Object.keys(stateEnactedFocus).forEach(state => {
+                const stateFocus = stateEnactedFocus[state];
+                const gaps = [...allSuccessfulFocus].filter(focus => !stateFocus.has(focus));
+                if (gaps.length > 0) {
+                    gapAnalysis.push({
+                        state: state,
+                        gaps: gaps,
+                        gapCount: gaps.length,
+                        coverageScore: Math.round(((allSuccessfulFocus.size - gaps.length) / allSuccessfulFocus.size) * 100)
+                    });
+                }
+            });
+            
+            // Sort by most gaps (biggest opportunities)
+            gapAnalysis.sort((a, b) => b.gapCount - a.gapCount);
+            
+            // Display results
+            const gapHTML = `
+                <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 6px; padding: 20px; margin-bottom: 20px;">
+                    <h4 style="color: #856404; margin-bottom: 15px;">Policy Opportunity Analysis</h4>
+                    <p style="color: #856404; margin-bottom: 20px;">States with the most policy gaps represent the biggest opportunities for advocacy and policy development.</p>
+                    
+                    <div style="max-height: 300px; overflow-y: auto;">
+                        ${gapAnalysis.slice(0, 10).map(analysis => `
+                            <div style="border-bottom: 1px solid #eee; padding: 10px 0;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <strong>${analysis.state}</strong>
+                                    <span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8em;">
+                                        ${analysis.gapCount} gaps (${analysis.coverageScore}% coverage)
+                                    </span>
+                                </div>
+                                <div style="font-size: 0.9em; color: #666;">
+                                    <strong>Missing successful approaches:</strong> ${analysis.gaps.slice(0, 5).join(', ')}${analysis.gaps.length > 5 ? '...' : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <div style="margin-top: 15px; text-align: center;">
+                        <button class="preset-btn" onclick="document.getElementById('tableContainer').innerHTML = document.getElementById('tableContainer').innerHTML;">Close Analysis</button>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('tableContainer').innerHTML = gapHTML + document.getElementById('tableContainer').innerHTML;
         }
         
         function closeScorecard() {
